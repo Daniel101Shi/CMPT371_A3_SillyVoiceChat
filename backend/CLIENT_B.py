@@ -5,6 +5,7 @@ import socket
 import threading
 import time
 import pyaudio
+
 # set address and port
 LOCAL_IP = "127.0.0.1"
 LOCAL_PORT = 5001
