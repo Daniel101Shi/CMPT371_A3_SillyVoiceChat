@@ -22,7 +22,7 @@ while True:
     data, address = sock.recvfrom(4096)
 
     # unpack the first 4 bytes as sequence number
-    header = data[:4].decode("utf-8")
+    header = data[:4]
 
     # get the actual message body
     msg_body = data[4:].decode("utf-8")

@@ -1,6 +1,6 @@
 import socket 
 import struct
-
+import time
 # set target address and port
 TARGET_IP = "127.0.0.1"
 TARGET_PORT = 5000
