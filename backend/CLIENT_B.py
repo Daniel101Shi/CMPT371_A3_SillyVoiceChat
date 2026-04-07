@@ -1,6 +1,5 @@
 
-# test run: python3 network.py in one terminal and python3 CLIENT_B.py in another
-# might have to use arch -x86_64 python3 ... depending on architecture
+# See network.py for instructions
 import struct
 import socket
 import threading
@@ -8,9 +7,9 @@ import time
 import pyaudio
 # set address and port
 LOCAL_IP = "127.0.0.1"
-LOCAL_PORT = 5000
+LOCAL_PORT = 5001
 TARGET_IP = "127.0.0.1"
-TARGET_PORT = 5001
+TARGET_PORT = 5000
 
 # audio configs
 # 1024 size of sound at a time
