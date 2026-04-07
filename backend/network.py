@@ -23,11 +23,13 @@ while True:
 
     # unpack the first 4 bytes as sequence number
     header = data[:4]
+    seq_num = struct.unpack("!I", header)[0]
+
 
     # get the actual message body
     msg_body = data[4:].decode("utf-8")
     
     # print recieved msg
-    print(f"Recieved from {address}: {header} {msg_body}")
+    print(f"Recieved from {address}: {seq_num} - {msg_body}")
 
 
