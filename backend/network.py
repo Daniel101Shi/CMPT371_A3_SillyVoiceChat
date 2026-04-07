@@ -1,7 +1,7 @@
 
 # test: run python3 network.py in one terminal
 # run: echo "Hello from terminal 2" | nc -u 127.0.0.1 5000 ,in another terminal
-
+import struct
 import socket
 # set address and port
 LOCAL_IP = "127.0.0.1"
@@ -21,8 +21,13 @@ while True:
     # recieve data
     data, address = sock.recvfrom(4096)
 
-    # decode data from bytes to string
-    msg = data.decode("utf-8")
+    # unpack the first 4 bytes as sequence number
+    header = data[:4].decode("utf-8")
+
+    # get the actual message body
+    msg_body = data[4:].decode("utf-8")
     
     # print recieved msg
-    print(f"Recieved from {address}: {msg}")
+    print(f"Recieved from {address}: {header} {msg_body}")
+
+
