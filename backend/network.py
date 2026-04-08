@@ -36,6 +36,15 @@ def detect_local_ip():
     except Exception:
         return "127.0.0.1"
 
+# Helper function used to scale the volume of audio samples before they are played    
+def scale_volume(audio_chunk, volume):
+    # unpack all samples as signed 16-bit integers
+    samples = struct.unpack(f"<{len(audio_chunk) // 2}h", audio_chunk)
+    # scale and clamp each sample to the valid 16-bit range
+    scaled = [max(-32768, min(32767, int(s * volume))) for s in samples]
+    # repack back into bytes
+    return struct.pack(f"<{len(scaled)}h", *scaled)
+
 # Define all logic regarding network and audio in a class so it can be called by the GUI
 class NetworkLogic:
     def __init__(self, local_ip, local_port, target_ip, target_port):
@@ -69,6 +78,11 @@ class NetworkLogic:
         self.last_played_seq = -1
         # intermediary queue used by 
         self.audio_queue = queue.Queue()
+        # mute and deafen flags
+        self.muted = False
+        self.deafened = False
+        # volume
+        self.volume = 1.0
 
     # when the call is joined, call start() to begin all audio sending and recieving
     def start(self):
@@ -130,7 +144,11 @@ class NetworkLogic:
         while self.running:
             try:
                 audio_chunk = self.audio_queue.get(timeout=1)
-                self.speaker_stream.write(audio_chunk)
+                if not self.deafened:
+                    # scale volume of packet
+                    audio_chunk = scale_volume(audio_chunk, self.volume)
+                    # write packet to speaker
+                    self.speaker_stream.write(audio_chunk)
             # if the audio queue is empty, don't do anything
             except queue.Empty:
                 continue
@@ -148,13 +166,14 @@ class NetworkLogic:
             
                 # grab chunk of raw audio from mic
                 audio = self.mic_stream.read(CHUNK, exception_on_overflow=False)
+                # if muted, send a blank (silent) packet instead
+                if self.muted:
+                    audio = bytes(CHUNK * 2)
 
                 # concatenate header and audio data into 1 packet and send it
                 packet = header + audio
                 self.sock.sendto(packet, (self.target_ip, self.target_port))
 
-                # debug line:
-                # print(f"Sent packet {seq_num}")
                 seq_num += 1
             except OSError:
                 break
