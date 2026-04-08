@@ -1,6 +1,3 @@
-
-# test run: python3 network.py in one terminal and python3 CLIENT_B.py in another
-# might have to use arch -x86_64 python3 ... depending on architecture
 import struct
 import socket
 import threading
