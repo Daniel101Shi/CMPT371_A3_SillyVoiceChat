@@ -1,8 +1,8 @@
 # SillyVoiceChat — UDP Walkie-Talkie
 
-A real-time, peer-to-peer voice chat application built with Python and raw UDP sockets. Two users on the same local network can talk to each other like a walkie-talkie, with no server required.
+A real-time, peer-to-peer voice chat application built with Python and raw UDP sockets. Two users on the same local network can talk to each other like a walkie-talkie, with no central server required.
 
-> **CMPT 371 — Assignment 3**
+> **CMPT 371 — Assignment 3**  
 > Made by **Daniel Shi** (Networking & Threading) & **Vincent** (Audio & UI)
 
 ---
@@ -12,6 +12,8 @@ A real-time, peer-to-peer voice chat application built with Python and raw UDP s
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Running the Application](#running-the-application)
+  - [GUI Mode (Recommended)](#gui-mode-recommended)
+  - [Local Loopback Test (No Partner Needed)](#local-loopback-test-no-partner-needed)
 - [Architecture](#architecture)
 - [Limitations](#limitations)
 
@@ -19,19 +21,24 @@ A real-time, peer-to-peer voice chat application built with Python and raw UDP s
 
 ## How It Works
 
-Each peer runs one Python script that has **two threads running simultaneously**:
+Each peer runs `app.py`, which opens a small **Tkinter GUI**. After entering the partner's IP and clicking Connect, the app uses three background threads managed by `NetworkLogic` (in `network.py`):
 
-- **Send Thread (main):** Reads raw audio from your microphone in 1024-frame chunks, attaches a 4-byte sequence number header, and blasts it out over UDP.
-- **Receive Thread (background daemon):** Listens for incoming UDP packets, strips the sequence number, and places the chunk into a **Jitter Buffer**. Once the buffer holds 3 packets, it pops the oldest one and writes it to your speakers.
+| Thread | Role |
+|---|---|
+| **Send thread** | Reads 1024-frame chunks from the microphone, prepends a 4-byte sequence number, and fires them over UDP to the partner. |
+| **Receive thread** | Listens for incoming UDP packets, strips the sequence number, and inserts the audio chunk into a sorted **jitter buffer**. |
+| **Playback thread** | Drains the jitter buffer to the speakers as soon as it holds ≥ 3 packets (~70 ms of audio). |
 
-The **Jitter Buffer** is how we handle UDP's lack of ordering guarantees. Because UDP packets can arrive out of order, we wait and sort them before playing. Late or duplicate packets (those with a sequence number ≤ the last played one) are silently dropped.
+The **jitter buffer** compensates for UDP's lack of ordering guarantees. Packets are sorted before playback; late or duplicate packets (sequence number ≤ last played) are silently dropped.
 
 ---
 
 ## Prerequisites
 
-- **Python 3.8+**
-- **PortAudio** (system-level audio library, required by PyAudio)
+- **Python 3.8 or newer** — [python.org/downloads](https://www.python.org/downloads/)
+- **pip** — bundled with Python 3.4+
+- **PortAudio** — system-level audio library required by PyAudio (see table below)
+- **Tkinter** — comes bundled with the standard Python installer on all major platforms
 
 ### Install PortAudio
 
@@ -39,10 +46,10 @@ The **Jitter Buffer** is how we handle UDP's lack of ordering guarantees. Becaus
 |---|---|
 | **macOS** | `brew install portaudio` |
 | **Ubuntu / Debian** | `sudo apt-get install portaudio19-dev python3-pyaudio` |
-| **Windows** | No extra step needed — PyAudio's wheel includes PortAudio |
+| **Windows** | No extra step needed — PyAudio's pip wheel bundles PortAudio |
 
-> **macOS Apple Silicon (M1/M2/M3) Note:**
-> If your Mac uses an Apple Silicon chip but your Homebrew is installed at `/usr/local/` (Intel/Rosetta), you may need to compile PyAudio for x86_64 and run with `arch -x86_64`. See the Installation section below.
+> **macOS Apple Silicon (M1/M2/M3) Note:**  
+> If Homebrew is installed at `/usr/local/` (Intel/Rosetta path), you may need to compile PyAudio for x86_64. See the [Installation](#installation) section for the fix.
 
 ---
 
@@ -54,26 +61,51 @@ git clone https://github.com/Daniel101Shi/CMPT371_A3_SillyVoiceChat.git
 cd CMPT371_A3_SillyVoiceChat
 ```
 
-**2. Install Python dependencies:**
+**2. (Optional but recommended) Create a virtual environment:**
+```bash
+python3 -m venv venv
+source venv/bin/activate      # macOS / Linux
+venv\Scripts\activate.bat     # Windows
+```
+
+**3. Install Python dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-> **If `import pyaudio` fails on macOS** (symbol not found / architecture error), run this instead to force a local compile:
+> **If `import pyaudio` fails on macOS** (symbol not found / architecture mismatch), force a local compile:
 > ```bash
 > pip uninstall -y pyaudio
 > LDFLAGS="-L/usr/local/lib" CFLAGS="-I/usr/local/include" pip install --no-cache-dir pyaudio --no-binary :all:
 > ```
-> Then run all Python commands prefixed with `arch -x86_64` (see examples below).
+> Then prefix every `python3` command below with `arch -x86_64`.
 
 ---
 
 ## Running the Application
 
-Both users must be on the same local network (or the same machine for testing).
+Both peers must be on the **same local network** (or the same machine for loopback testing).
 
-### Step 1 — Find Your Local IP Address
+### GUI Mode (Recommended)
 
+This is the primary way to run the app. Both users follow these steps independently.
+
+**Step 1 — Launch the app:**
+```bash
+cd backend
+python3 app.py
+```
+
+> macOS Apple Silicon with Rosetta Homebrew:
+> ```bash
+> arch -x86_64 python3 app.py
+> ```
+
+**Step 2 — Find and share your local IP:**
+
+The app **automatically detects and displays your local IP** in the "Your IP" field at the top. Share this address with your partner (e.g., via text or chat).
+
+You can also find it manually:
 ```bash
 # macOS / Linux
 ifconfig | grep "inet "
@@ -82,98 +114,112 @@ ifconfig | grep "inet "
 ipconfig
 ```
 
-### Step 2 — Edit the config at the top of `backend/network.py`
+**Step 3 — Connect:**
 
-Open `backend/network.py` and set:
-```python
-LOCAL_IP = "0.0.0.0"       # Listen on all interfaces
-LOCAL_PORT = 5000           # The port YOU listen on
-TARGET_IP = "192.168.X.X"  # Your PARTNER's IP address
-TARGET_PORT = 5000          # The port your PARTNER listens on
-```
+1. Enter your **partner's IP address** in the "Partner IP" field.
+2. Click **Connect**.
+3. The status bar turns **green** when the call is live.
+4. Click **Disconnect** (same button) or close the window to end the call.
 
-Your partner does the same thing in their copy, pointing `TARGET_IP` back at you.
-
-### Step 3 — Run
-
-**Standard (most machines):**
-```bash
-cd backend
-python3 network.py
-```
-
-**macOS Apple Silicon with Rosetta Homebrew:**
-```bash
-cd backend
-arch -x86_64 python3 network.py
-```
-
-Press `Ctrl+C` to quit cleanly.
+> **💡 No partner? Test it yourself!**  
+> Tick the **"Loopback test (same machine)"** checkbox before clicking Connect. The app will send and receive on `127.0.0.1:5000` — no second machine needed. You'll hear your own voice played back after the ~70 ms jitter-buffer delay, confirming that audio capture and playback are working correctly.
 
 ---
 
-### Local Loopback Test (Single Machine, No Partner Needed)
+### Local Loopback Test (No Partner Needed)
 
-To test that everything works by yourself, open **two terminals**.
+Use this to verify that audio capture and playback work on a single machine.
 
-**Terminal 1 — `network.py` (listens on 5000, sends to 5001):**
+**Option A — GUI loopback (simplest):**
+
 ```bash
 cd backend
-# Edit LOCAL_PORT = 5000, TARGET_PORT = 5001 in network.py first
-python3 network.py
+python3 app.py
 ```
 
-**Terminal 2 — `CLIENT_B.py` (listens on 5001, sends to 5000):**
+Tick the **"Loopback test (same machine)"** checkbox and click **Connect**. Both send and receive happen on `127.0.0.1:5000`. You will hear your own voice played back after the jitter-buffer delay (~70 ms).
+
+**Option B — Two-terminal loopback (tests full peer path):**
+
+Open **two separate terminals**.
+
+Terminal 1:
 ```bash
 cd backend
-# CLIENT_B.py already has LOCAL_PORT = 5001, TARGET_PORT = 5000
+python3 app.py
+# Enter 127.0.0.1 as the Partner IP and click Connect
+```
+
+Terminal 2:
+```bash
+cd backend
 python3 CLIENT_B.py
 ```
 
-Speak into your mic — you will hear your own voice played back after a brief jitter-buffer delay (~70 ms).
+`CLIENT_B.py` is a standalone script pre-configured to listen on port `5001` and send to port `5000`. Speak into your microphone, you will hear the audio looped back after the jitter-buffer delay.
+
+> `sender.py` is a lightweight debug utility that sends dummy UDP text packets (not real audio). It is only useful for raw socket testing.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────┐
-│  network.py (each peer runs this)            │
-│                                              │
-│  [Main Thread — Sender]                      │
-│   mic.read(1024 frames)                      │
-│   struct.pack("!I", seq_num) → 4-byte header │
-│   packet = header + audio_bytes              │
-│   sock.sendto(packet, partner)               │
-│                                              │
-│  [Daemon Thread — Receiver]                  │
-│   data = sock.recvfrom(4096)                 │
-│   seq = struct.unpack("!I", data[:4])        │
-│   if seq ≤ last_played → drop (late/dup)     │
-│   else → insert into jitter_buffer (sorted)  │
-│   if len(buffer) ≥ 3 → pop oldest           │
-│                      → speaker.write(audio)  │
-└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  app.py  — Tkinter GUI                                   │
+│  Reads IP fields → creates NetworkLogic → calls start()  │
+└───────────────────────┬──────────────────────────────────┘
+                        │
+┌───────────────────────▼──────────────────────────────────┐
+│  network.py  — NetworkLogic class                        │
+│                                                          │
+│  [send_loop thread]                                      │
+│   mic.read(1024 frames)                                  │
+│   header = struct.pack("!I", seq_num)  ← 4-byte header  │
+│   sock.sendto(header + audio, partner_addr)              │
+│                                                          │
+│  [recieve_loop thread]                                   │
+│   data = sock.recvfrom(4096)                             │
+│   seq = struct.unpack("!I", data[:4])                    │
+│   if seq ≤ last_played_seq → drop (late / duplicate)    │
+│   else → insert into jitter_buffer (kept sorted)         │
+│   if len(buffer) ≥ 3 → pop oldest → audio_queue.put()   │
+│                                                          │
+│  [playback_loop thread]                                  │
+│   audio_chunk = audio_queue.get()                        │
+│   speaker_stream.write(audio_chunk)                      │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Packet Format
+
+```
+ 0        3  4              N
+ ┌────────┬──────────────────┐
+ │seq_num │  raw PCM audio   │
+ │ 4 bytes│  (1024 frames)   │
+ └────────┴──────────────────┘
 ```
 
 ### Jitter & Ordering Strategy
 
-| Problem | Our Solution |
+| Problem | Solution |
 |---|---|
-| Out-of-order packets | 4-byte sequence number header + sorted jitter buffer |
-| Jitter (variable arrival time) | Buffer holds 3 packets (~70 ms) before playing, smoothing variance |
-| Late packets | Dropped if `seq_num ≤ last_played_seq` |
-| Duplicate packets | Same check — silently discarded |
-| Lost packets | Gap results in brief silence; audio stream continues |
+| Out-of-order packets | 4-byte sequence number + sorted jitter buffer |
+| Jitter (variable arrival delay) | Buffer holds 3 packets (~70 ms) before playing |
+| Late or duplicate packets | Dropped if `seq_num ≤ last_played_seq` |
+| Lost packets | Silent gap in audio; stream continues automatically |
 
 ---
 
 ## Limitations
 
-- **LAN only** — requires both machines on the same network (or manual port forwarding for internet use).
-- **No encryption** — audio bytes are transmitted as raw UDP plaintext. Not suitable for private conversations.
-- **No retransmission** — UDP does not resend lost packets. Network congestion will cause brief silence gaps.
-- **One-to-one only** — the application only supports two peers simultaneously.
-- **Jitter buffer latency** — the 3-packet buffer adds approximately 70 ms of intentional delay to smooth playback.
-- **Microphone required** — the application assumes a default system microphone is available and accessible.
-- **macOS Rosetta quirk** — Apple Silicon Macs using Intel Homebrew may need `arch -x86_64` prefix (documented above).
+- **LAN only** — both machines must be on the same local network. Internet calls require manual port forwarding on each router, which is outside the scope of this project.
+- **No encryption** — audio is transmitted as raw UDP plaintext. Not suitable for private conversations.
+- **No retransmission** — UDP does not guarantee delivery. Dropped packets produce brief silence gaps; there is no recovery mechanism.
+- **One-to-one only** — the application supports exactly two peers. Group calls are not supported.
+- **Jitter buffer latency** — the 3-packet buffer introduces approximately 70 ms of intentional delay to smooth playback. Reducing `JITTER_BUFFER_SIZE` lowers latency but risks choppy audio on congested networks.
+- **Default microphone only** — the app uses whatever PyAudio selects as the system's default input device. There is no in-app device selector.
+- **Same port on both peers** — both sides listen and send on port `5000` (configurable via `DEFAULT_PORT` in `network.py`). If your OS or firewall blocks that port, the connection will silently fail.
+- **Loopback limitation** — the GUI loopback mode (`127.0.0.1:5000 → 127.0.0.1:5000`) sends and receives on the same socket, so you hear your own voice echoed rather than a true two-peer exchange. Use the two-terminal method (`app.py` + `CLIENT_B.py`) to simulate two peers locally.
+- **macOS Rosetta quirk** — Apple Silicon Macs using an Intel Homebrew installation may need the `arch -x86_64` prefix as documented above.
