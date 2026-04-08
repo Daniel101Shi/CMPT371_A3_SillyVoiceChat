@@ -92,7 +92,7 @@ This is the primary way to run the app. Both users follow these steps independen
 
 **Step 1 — Launch the app:**
 ```bash
-cd backend
+cd src
 python3 app.py
 ```
 
@@ -130,35 +130,12 @@ ipconfig
 
 Use this to verify that audio capture and playback work on a single machine.
 
-**Option A — GUI loopback (simplest):**
-
 ```bash
-cd backend
+cd src
 python3 app.py
 ```
 
 Tick the **"Loopback test (same machine)"** checkbox and click **Connect**. Both send and receive happen on `127.0.0.1:5000`. You will hear your own voice played back after the jitter-buffer delay (~70 ms).
-
-**Option B — Two-terminal loopback (tests full peer path):**
-
-Open **two separate terminals**.
-
-Terminal 1:
-```bash
-cd backend
-python3 app.py
-# Enter 127.0.0.1 as the Partner IP and click Connect
-```
-
-Terminal 2:
-```bash
-cd backend
-python3 CLIENT_B.py
-```
-
-`CLIENT_B.py` is a standalone script pre-configured to listen on port `5001` and send to port `5000`. Speak into your microphone, you will hear the audio looped back after the jitter-buffer delay.
-
-> `sender.py` is a lightweight debug utility that sends dummy UDP text packets (not real audio). It is only useful for raw socket testing.
 
 ---
 
@@ -221,5 +198,5 @@ python3 CLIENT_B.py
 - **Jitter buffer latency** — the 3-packet buffer introduces approximately 70 ms of intentional delay to smooth playback. Reducing `JITTER_BUFFER_SIZE` lowers latency but risks choppy audio on congested networks.
 - **Default microphone only** — the app uses whatever PyAudio selects as the system's default input device. There is no in-app device selector.
 - **Same port on both peers** — both sides listen and send on port `5000` (configurable via `DEFAULT_PORT` in `network.py`). If your OS or firewall blocks that port, the connection will silently fail.
-- **Loopback limitation** — the GUI loopback mode (`127.0.0.1:5000 → 127.0.0.1:5000`) sends and receives on the same socket, so you hear your own voice echoed rather than a true two-peer exchange. Use the two-terminal method (`app.py` + `CLIENT_B.py`) to simulate two peers locally.
+- **Loopback limitation** — the GUI loopback mode (`127.0.0.1:5000 → 127.0.0.1:5000`) sends and receives on the same socket, so you hear your own voice echoed rather than a true two-peer exchange. Use the two-terminal method (two instances of `app.py`) to simulate two peers locally.
 - **macOS Rosetta quirk** — Apple Silicon Macs using an Intel Homebrew installation may need the `arch -x86_64` prefix as documented above.

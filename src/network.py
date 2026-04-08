@@ -20,7 +20,7 @@ RATE = 44100
 # === Jitter buffer config ===
 # how many packets we wait for before starting to play audio 
 JITTER_BUFFER_SIZE = 3
-# default port for loopback testing
+# default port
 DEFAULT_PORT = 5000
 
 
