@@ -7,12 +7,6 @@ import threading
 import queue
 import pyaudio
 
-# set address and port
-LOCAL_IP = "127.0.0.1"
-LOCAL_PORT = 5000
-TARGET_IP = "127.0.0.1"
-TARGET_PORT = 5001
-
 # === Audio config ===
 # 1024 frames of sound at a time
 CHUNK = 1024
@@ -26,6 +20,7 @@ RATE = 44100
 # === Jitter buffer config ===
 # how many packets we wait for before starting to play audio 
 JITTER_BUFFER_SIZE = 3
+# default port for loopback testing
 DEFAULT_PORT = 5000
 
 
@@ -80,55 +75,87 @@ class NetworkLogic:
         self.running = True
         # start the audio threads
         threading.Thread(target=self.recieve_loop, daemon=True).start()
+        threading.Thread(target=self.playback_loop, daemon=True).start()
         threading.Thread(target=self.send_loop, daemon=True).start()
 
+    # when there is no call active, close mic and speaker access and set running flag
+    def stop(self):
+        self.running = False
+        self.sock.close()
+        self.mic_stream.stop_stream()
+        self.mic_stream.close()
+        self.speaker_stream.stop_stream()
+        self.speaker_stream.close()
+        self.p.terminate()
+
+    # thread that recieves audio from server and sends it to an audio queue
     def recieve_loop(self):
         # core logic
         while self.running:
-
             # recieve data
-            data, _ = sock.recvfrom(4096)
+            try:
+                data, _ = self.sock.recvfrom(4096)
+            except OSError:
+                break
 
             # unpack the first 4 bytes as sequence number
             header = data[:4]
             seq_num = struct.unpack("!I", header)[0]
             # get the actual message body in raw audio bytes
             msg_body = data[4:]
-            
-            # optional debug statement
-            # print(f"Received packet {seq_num}")
 
-            # check if the packet should be skipped
-            if(seq_num <= last_played_seq):
+            # lock resources using mutex
+            with self.jitter_lock:
+
+                # optional debug statement
+                # print(f"Received packet {seq_num}")
+
+                # check if the packet should be skipped
+                if(seq_num <= self.last_played_seq):
+                    continue
+
+                self.jitter_buffer.append((seq_num, msg_body))
+                self.jitter_buffer.sort(key=lambda x: x[0])
+
+                # play audio if buffer is full
+                if(len(self.jitter_buffer) >= JITTER_BUFFER_SIZE):
+                    popped_seq, popped_msg = self.jitter_buffer.pop(0)
+                    self.last_played_seq = popped_seq
+                    
+                    # move audio chunk to audio queue
+                    self.audio_queue.put(popped_msg)
+
+    # thread that writes queued audio to speaker
+    def playback_loop(self):
+        while self.running:
+            try:
+                audio_chunk = self.audio_queue.get(timeout=1)
+                self.speaker_stream.write(audio_chunk)
+            # if the audio queue is empty, don't do anything
+            except queue.Empty:
                 continue
-            else:
-                jitter_buffer.append((seq_num, msg_body))
-                jitter_buffer.sort(key=lambda x: x[0])
 
-            # play audio if buffer is full
-            if(len(jitter_buffer) >= JITTER_BUFFER_SIZE):
-                popped_seq, popped_msg = jitter_buffer.pop(0)
-                last_played_seq = popped_seq
-                
-                # write audio chunk to speaker
-                speaker_stream.write(popped_msg)
-
+    
     # thread that sends audio from user to server
-    def send_loop():
+    def send_loop(self):
         # sequence number counter for packets
         seq_num = 0
 
         while self.running:
-            # create header
-            header = struct.pack("!I", seq_num)
-        
-            # grab chunk of raw audio from mic
-            audio = self.mic_stream.read(CHUNK, exception_on_overflow=False)
+            try:
+                # create header
+                header = struct.pack("!I", seq_num)
+            
+                # grab chunk of raw audio from mic
+                audio = self.mic_stream.read(CHUNK, exception_on_overflow=False)
 
-            # concatenate header and audio data into 1 packet and send it
-            packet = header + audio
-            self.sock.sendto(packet, (TARGET_IP, TARGET_PORT))
+                # concatenate header and audio data into 1 packet and send it
+                packet = header + audio
+                self.sock.sendto(packet, (self.target_ip, self.target_port))
 
-            # print(f"Sent packet {seq_num}")
-            seq_num += 1
+                # debug line:
+                # print(f"Sent packet {seq_num}")
+                seq_num += 1
+            except OSError:
+                break
 
