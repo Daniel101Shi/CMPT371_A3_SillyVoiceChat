@@ -12,8 +12,6 @@ A real-time, peer-to-peer voice chat application built with Python and raw UDP s
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Running the Application](#running-the-application)
-  - [GUI Mode (Recommended)](#gui-mode-recommended)
-  - [Local Loopback Test (No Partner Needed)](#local-loopback-test-no-partner-needed)
 - [Architecture](#architecture)
 - [Limitations](#limitations)
 
@@ -84,13 +82,14 @@ pip install -r requirements.txt
 
 ## Running the Application
 
+> **Note:** All source files are located in the `src/` directory.
+
 Both peers must be on the **same local network** (or the same machine for loopback testing).
 
-### GUI Mode (Recommended)
+There is **one way to run the application**: via `app.py`. Both peers run the same script.
 
-This is the primary way to run the app. Both users follow these steps independently.
+### Step 1 — Launch the app
 
-**Step 1 — Launch the app:**
 ```bash
 cd src
 python3 app.py
@@ -98,10 +97,11 @@ python3 app.py
 
 > macOS Apple Silicon with Rosetta Homebrew:
 > ```bash
+> cd src
 > arch -x86_64 python3 app.py
 > ```
 
-**Step 2 — Find and share your local IP:**
+### Step 2 — Find and share your local IP
 
 The app **automatically detects and displays your local IP** in the "Your IP" field at the top. Share this address with your partner (e.g., via text or chat).
 
@@ -114,19 +114,18 @@ ifconfig | grep "inet "
 ipconfig
 ```
 
-**Step 3 — Connect:**
+### Step 3 — Connect
 
 1. Enter your **partner's IP address** in the "Partner IP" field.
 2. Click **Connect**.
 3. The status bar turns **green** when the call is live.
 4. Click **Disconnect** (same button) or close the window to end the call.
 
-> **💡 No partner? Test it yourself!**  
-> Tick the **"Loopback test (same machine)"** checkbox before clicking Connect. The app will send and receive on `127.0.0.1:5000` — no second machine needed. You'll hear your own voice played back after the ~70 ms jitter-buffer delay, confirming that audio capture and playback are working correctly.
+Both peers must connect to **each other's IP address** at the same time. Port `5000` is used automatically on both sides.
 
 ---
 
-### Local Loopback Test (No Partner Needed)
+### Loopback Test (No Partner Needed)
 
 Use this to verify that audio capture and playback work on a single machine.
 
@@ -155,7 +154,7 @@ Tick the **"Loopback test (same machine)"** checkbox and click **Connect**. Both
 │   header = struct.pack("!I", seq_num)  ← 4-byte header  │
 │   sock.sendto(header + audio, partner_addr)              │
 │                                                          │
-│  [recieve_loop thread]                                   │
+│  [receive_loop thread]                                   │
 │   data = sock.recvfrom(4096)                             │
 │   seq = struct.unpack("!I", data[:4])                    │
 │   if seq ≤ last_played_seq → drop (late / duplicate)    │
@@ -191,12 +190,13 @@ Tick the **"Loopback test (same machine)"** checkbox and click **Connect**. Both
 
 ## Limitations
 
-- **LAN only** — both machines must be on the same local network. Internet calls require manual port forwarding on each router, which is outside the scope of this project.
+- **LAN only** — both machines must be on the same local network. Internet calls would require manual port forwarding on each router, which is outside the scope of this project.
 - **No encryption** — audio is transmitted as raw UDP plaintext. Not suitable for private conversations.
 - **No retransmission** — UDP does not guarantee delivery. Dropped packets produce brief silence gaps; there is no recovery mechanism.
 - **One-to-one only** — the application supports exactly two peers. Group calls are not supported.
-- **Jitter buffer latency** — the 3-packet buffer introduces approximately 70 ms of intentional delay to smooth playback. Reducing `JITTER_BUFFER_SIZE` lowers latency but risks choppy audio on congested networks.
+- **Jitter buffer latency** — the 3-packet buffer introduces approximately 70 ms of intentional delay to smooth playback. Reducing `JITTER_BUFFER_SIZE` in `network.py` lowers latency but risks choppy audio on congested networks.
 - **Default microphone only** — the app uses whatever PyAudio selects as the system's default input device. There is no in-app device selector.
 - **Same port on both peers** — both sides listen and send on port `5000` (configurable via `DEFAULT_PORT` in `network.py`). If your OS or firewall blocks that port, the connection will silently fail.
 - **Loopback limitation** — the GUI loopback mode (`127.0.0.1:5000 → 127.0.0.1:5000`) sends and receives on the same socket, so you hear your own voice echoed rather than a true two-peer exchange. Use the two-terminal method (two instances of `app.py`) to simulate two peers locally.
 - **macOS Rosetta quirk** — Apple Silicon Macs using an Intel Homebrew installation may need the `arch -x86_64` prefix as documented above.
+- **Microphone permission required** — on macOS and Windows, the OS may prompt for microphone access the first time the app runs. The app will hang silently if permission is denied.
